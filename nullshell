@@ -1,0 +1,606 @@
+#!/data/data/com.termux/files/usr/bin/bash
+#=====================================================================
+#   N U L L S H E L L   -   Termux Android APK Builder
+#   Builds ANY Java Android project into a signed, installable APK
+#   from inside Termux. No Android Studio. No Gradle. No PC.
+#
+#   OWNER     : Hari Jadhav Ji
+#   GitHub    : nullkrishn3
+#   Telegram  : nullkrishn
+#   Instagram : ur_.krishn_02
+#
+#   (c) Hari Jadhav Ji. Tamper-protected build. Do not edit OWNER block.
+#=====================================================================
+set -uo pipefail
+
+#=====================================================================
+#  OWNER IDENTITY BLOCK  --  DO NOT MODIFY
+#  Agar isme koi bhi change kiya, tool tamper detect karke BLOCK ho jayega.
+#=====================================================================
+OWNER_NAME="Hari Jadhav Ji"
+OWNER_TG="nullkrishn"
+OWNER_GH="nullkrishn3"
+OWNER_IG="ur_.krishn_02"
+OWNER_TGU="https://t.me/nullkrishn"
+OWNER_GHU="https://github.com/nullkrishn3"
+OWNER_IGU="https://instagram.com/ur_.krishn._02"
+OWNER_SEAL="5ad32c9e691e13752e2b1f30fe22b523bf8e4af8d51f63df22240967697379f7"
+#=====================================================================
+
+TOOL_NAME="NullShell"
+TOOL_VER="1.4"
+
+# Modern SDK values forced at build time so the APK installs on Android 5 -> 16+
+# (override with env vars if you really need to)
+MINSDK="${NULLSHELL_MIN_SDK:-21}"
+TARGETSDK="${NULLSHELL_TARGET_SDK:-30}"
+
+#---------------------------------------------------------------------
+# Colors (256-color) + log helpers
+#---------------------------------------------------------------------
+R=$'\033[1;38;5;196m'   # red
+O=$'\033[1;38;5;208m'   # orange
+Y=$'\033[1;38;5;226m'   # yellow
+GR=$'\033[1;38;5;46m'   # green
+CY=$'\033[1;38;5;51m'   # cyan
+BL=$'\033[1;38;5;39m'   # blue
+MG=$'\033[1;38;5;201m'  # magenta
+PK=$'\033[1;38;5;171m'  # pink
+W=$'\033[1;37m'         # white
+D=$'\033[2;37m'         # dim
+N=$'\033[0m'            # reset
+
+log()  { printf '%s [>] %s %s\n'  "$CY" "$N" "$1"; }
+ok()   { printf '%s [OK] %s %s\n' "$GR" "$N" "$1"; }
+warn() { printf '%s [!] %s %s\n'  "$Y"  "$N" "$1"; }
+err()  { printf '%s [X] %s %s\n'  "$R"  "$N" "$1"; }
+die()  { err "$1"; echo; exit 1; }
+
+# colorful per-step header (no boring rule lines)
+step() {
+  local c
+  case "$1" in
+    1) c=$R ;; 2) c=$O ;; 3) c=$Y ;;
+    4) c=$GR ;; 5) c=$CY ;; 6) c=$MG ;; *) c=$W ;;
+  esac
+  printf '%s   >> [%s/6]%s %s%s%s\n' "$c" "$1" "$N" "$W" "$2" "$N"
+}
+
+#---------------------------------------------------------------------
+# Colorful banner
+#---------------------------------------------------------------------
+banner() {
+  local cols=(196 208 226 46 51 39 201 171 45)
+  local letters=(N U L L S H E L L)
+  local rb="" i
+  for i in 0 1 2 3 4 5 6 7 8; do
+    rb+=$'\033[1;38;5;'"${cols[$i]}"'m'"${letters[$i]}"$'\033[0m'
+    [ "$i" -lt 8 ] && rb+=" "
+  done
+
+  printf '\n'
+  printf '      %s\n' "$rb"
+  printf '      %sTermux Android APK Builder%s  %s.%s  %sv%s%s\n' \
+         "$W" "$N" "$D" "$N" "$PK" "$TOOL_VER" "$N"
+  printf '      %sJava%s %s>%s %sDEX%s %s>%s %sSigned APK%s\n' \
+         "$Y" "$N" "$D" "$N" "$O" "$N" "$D" "$N" "$GR" "$N"
+  printf '\n'
+  printf '      %s*%s %sOWNER%s      %s%s%s\n'  "$Y" "$N" "$D" "$N" "$Y" "$OWNER_NAME" "$N"
+  printf '      %s>%s %sGitHub%s     %s%s%s\n'  "$W" "$N" "$D" "$N" "$W" "$OWNER_GH" "$N"
+  printf '      %s>%s %sTelegram%s   %s%s%s\n'  "$BL" "$N" "$D" "$N" "$BL" "$OWNER_TG" "$N"
+  printf '      %s>%s %sInstagram%s  %s%s%s\n'  "$MG" "$N" "$D" "$N" "$MG" "$OWNER_IG" "$N"
+  printf '\n'
+}
+
+#---------------------------------------------------------------------
+# TAMPER PROTECTION
+#---------------------------------------------------------------------
+_owner_data() {
+  printf '%s' "${OWNER_NAME}|${OWNER_TG}|${OWNER_GH}|${OWNER_IG}|${OWNER_TGU}|${OWNER_GHU}|${OWNER_IGU}"
+}
+
+_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  else
+    echo "NO_HASH_TOOL"
+  fi
+}
+
+verify_owner() {
+  local got
+  got="$(_owner_data | _sha256)"
+  if [ "$got" = "NO_HASH_TOOL" ]; then
+    err "Integrity engine (sha256sum/openssl) nahi mila."
+    die "Termux me 'pkg install coreutils' chalao."
+  fi
+  if [ "$got" != "$OWNER_SEAL" ]; then
+    echo
+    printf '%s############################################################%s\n' "$R" "$N"
+    printf '%s#          !!!   T A M P E R   D E T E C T E D   !!!        #%s\n' "$R" "$N"
+    printf '%s#   Owner identity block modiya gaya hai.                  #%s\n' "$R" "$N"
+    printf '%s#   %s band kar diya gaya hai. Build blocked.   #%s\n' "$R" "$TOOL_NAME" "$N"
+    printf '%s#   Asli owner: Hari Jadhav Ji                            #%s\n' "$R" "$N"
+    printf '%s#   GitHub: nullkrishn3  Telegram: nullkrishn              #%s\n' "$R" "$N"
+    printf '%s############################################################%s\n' "$R" "$N"
+    echo
+    exit 1
+  fi
+}
+
+#---------------------------------------------------------------------
+# Paths / config
+#---------------------------------------------------------------------
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+HOME_T="${HOME:-/data/data/com.termux/files/home}"
+BASE="$HOME_T/.nullshell"
+TOOLZ="$BASE/toolz"
+ANDROID_JAR="$TOOLZ/android.jar"
+KS="$BASE/nullshell.keystore"
+KSPASS="nullshell123"
+KSALIAS="nullshellkey"
+SELF="$0"
+SELF_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+
+#---------------------------------------------------------------------
+# 1. Environment checks
+#---------------------------------------------------------------------
+need_termux() {
+  [ -d "$PREFIX" ] || die "Yeh Termux me nahi chal raha. Pehle Termux install karo."
+  case "$(uname -m)" in
+    aarch64|armv7l|armv8l|i686|x86_64) : ;;
+    *) warn "Unknown CPU arch: $(uname -m) - try kar rahe hain." ;;
+  esac
+}
+
+#---------------------------------------------------------------------
+# 2. Install required packages (idempotent)
+#---------------------------------------------------------------------
+install_pkgs() {
+  log "Packages check kar raha hoon..."
+  pkg update -y >/dev/null 2>&1 || true
+  log "Zaroori tools install kar raha hoon..."
+  pkg install -y openjdk-17 aapt2 apksigner zip unzip curl wget coreutils \
+      >/dev/null 2>&1 || true
+  for p in d8 dx zipalign openssl; do
+    pkg install -y "$p" >/dev/null 2>&1 || true
+  done
+  ok "Packages ready."
+}
+
+#---------------------------------------------------------------------
+# 3. Locate Java
+#---------------------------------------------------------------------
+setup_java() {
+  JAVA_HOME=""
+  for d in "$PREFIX"/lib/jvm/java-*-openjdk "$PREFIX"/opt/openjdk; do
+    [ -x "$d/bin/javac" ] && JAVA_HOME="$d"
+  done
+  [ -n "$JAVA_HOME" ] || die "Java (javac) nahi mila. 'pkg install openjdk-17' chalao."
+  export JAVA_HOME
+  export PATH="$JAVA_HOME/bin:$PATH"
+  ok "Java mil gaya: $($JAVA_HOME/bin/javac -version 2>&1)"
+}
+
+#---------------------------------------------------------------------
+# 4. Get android.jar (bundled first, download only as last resort)
+#---------------------------------------------------------------------
+get_android_jar() {
+  mkdir -p "$TOOLZ"
+  if [ -f "$ANDROID_JAR" ] && [ -s "$ANDROID_JAR" ]; then
+    ok "android.jar pehle se ready hai."; return
+  fi
+  if [ -n "$SELF_DIR" ] && [ -s "$SELF_DIR/toolz/android.jar" ]; then
+    cp "$SELF_DIR/toolz/android.jar" "$ANDROID_JAR"
+    ok "Bundled android.jar use kiya (offline)."; return
+  fi
+  if [ -s "./toolz/android.jar" ]; then
+    cp ./toolz/android.jar "$ANDROID_JAR"; ok "android.jar project ke toolz/ se liya."; return
+  fi
+  log "android.jar download kar raha hoon (API 30 stubs)..."
+  local urls=(
+    "https://github.com/Sable/android-platforms/raw/master/android-30/android.jar"
+    "https://github.com/Sable/android-platforms/raw/master/android-33/android.jar"
+    "https://raw.githubusercontent.com/Sable/android-platforms/master/android-30/android.jar"
+  )
+  local u
+  for u in "${urls[@]}"; do
+    if curl -L --fail --connect-timeout 20 -o "$ANDROID_JAR.tmp" "$u" 2>/dev/null \
+       && [ -s "$ANDROID_JAR.tmp" ]; then
+      mv "$ANDROID_JAR.tmp" "$ANDROID_JAR"; ok "android.jar download ho gaya."; return
+    fi
+  done
+  rm -f "$ANDROID_JAR.tmp"
+  die "android.jar nahi mila. NullShell ke saath 'toolz/android.jar' rakho (zip me included hai)."
+}
+
+#---------------------------------------------------------------------
+# 5. Create signing keystore (once)
+#---------------------------------------------------------------------
+get_keystore() {
+  mkdir -p "$BASE"
+  if [ -f "$KS" ]; then ok "Signing keystore pehle se hai."; return; fi
+  log "Naya signing keystore bana raha hoon..."
+  keytool -genkeypair -keystore "$KS" -alias "$KSALIAS" \
+     -keyalg RSA -keysize 2048 -validity 10000 \
+     -storepass "$KSPASS" -keypass "$KSPASS" \
+     -dname "CN=${TOOL_NAME}, O=Termux, C=IN" >/dev/null 2>&1 \
+     && ok "Keystore ready." || die "Keystore banane me error aaya."
+}
+
+#---------------------------------------------------------------------
+# 6. Detect build tools
+#---------------------------------------------------------------------
+pick_dexer() {
+  if command -v d8 >/dev/null 2>&1; then DEXER="d8"
+  elif command -v dx >/dev/null 2>&1; then DEXER="dx"
+  else die "d8/dx nahi mila. 'pkg install d8' chalao."; fi
+  ok "DEX converter: $DEXER"
+}
+
+#---------------------------------------------------------------------
+# Find AndroidManifest.xml (root or nested), or scaffold a starter app
+#---------------------------------------------------------------------
+locate_or_scaffold() {
+  local root="$1"
+  cd "$root" 2>/dev/null || die "Folder nahi mila: $root"
+
+  [ -f AndroidManifest.xml ] && return 0
+
+  log "Manifest root me nahi hai - subfolders me dhundh raha hoon..."
+  local found
+  found=$(find . -maxdepth 4 -name AndroidManifest.xml \
+            -not -path '*/.nullshell-build/*' 2>/dev/null | head -1)
+  if [ -n "$found" ]; then
+    cd "$(dirname "$found")" || die "Manifest folder me ja nahi paya."
+    ok "Manifest mila: $PWD"
+    return 0
+  fi
+
+  local java_count
+  java_count=$(find . -maxdepth 4 -name '*.java' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$java_count" -gt 0 ]; then
+    warn "Yahan .java files hain lekin AndroidManifest.xml nahi mila."
+    die "Manifest ko project root me rakho, ya kisi aur folder par chalao."
+  fi
+
+  warn "Is folder me koi project nahi mila: $root"
+  log "Turant build test karne ke liye ek starter app bana raha hoon..."
+  scaffold_project "$root"
+}
+
+scaffold_project() {
+  local root="$1"
+  cd "$root" 2>/dev/null || die "Folder me ja nahi paya: $root"
+  local raw appname pkg pkgpath
+  raw="$(basename "$root")"
+  appname="$(printf '%s' "$raw" | tr -cd 'A-Za-z0-9 _-')"
+  [ -z "$appname" ] && appname="NullApp"
+  pkg="com.nullshell.$(printf '%s' "$raw" | tr -cd 'a-z0-9' | tr 'A-Z' 'a-z')"
+  [ "$pkg" = "com.nullshell." ] && pkg="com.nullshell.app"
+  pkgpath="$(printf '%s' "$pkg" | tr '.' '/')"
+
+  mkdir -p "res/layout" "res/values" "src/$pkgpath"
+
+  cat > AndroidManifest.xml <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="$pkg"
+    android:versionCode="1"
+    android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="$MINSDK" android:targetSdkVersion="$TARGETSDK" />
+    <application
+        android:label="$appname"
+        android:allowBackup="true"
+        android:debuggable="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+EOF
+
+  cat > res/values/strings.xml <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">$appname</string>
+    <string name="tagline">NullShell se build hua - kisi bhi Android par install!</string>
+</resources>
+EOF
+
+  cat > res/layout/activity_main.xml <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0D0D0D"
+    android:padding="24dp">
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:textColor="#FF1744"
+        android:textSize="30sp"
+        android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/tagline"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:gravity="center" />
+</LinearLayout>
+EOF
+
+  cat > "src/$pkgpath/MainActivity.java" <<EOF
+package $pkg;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        Toast.makeText(this, "NullShell build OK!", Toast.LENGTH_LONG).show();
+    }
+}
+EOF
+
+  ok "Starter app bana diya (package: $pkg)."
+}
+
+#---------------------------------------------------------------------
+# Prepare a FIXED manifest copy (modern min/target SDK, no maxSdk block)
+# so the APK installs on any Android 5 -> 16+ device.
+#---------------------------------------------------------------------
+prepare_manifest() {
+  local B="$1"
+  local M="$B/AndroidManifest.xml"
+  cp AndroidManifest.xml "$M"
+
+  # remove any maxSdkVersion (it would block install on newer devices)
+  sed -i -E 's/ *android:maxSdkVersion="[0-9]+"//g' "$M"
+
+  # override existing min/target sdk values
+  sed -i -E "s/android:minSdkVersion=\"[0-9]+\"/android:minSdkVersion=\"$MINSDK\"/g" "$M"
+  sed -i -E "s/android:targetSdkVersion=\"[0-9]+\"/android:targetSdkVersion=\"$TARGETSDK\"/g" "$M"
+
+  # if a <uses-sdk> exists but is missing one of the attributes, add it
+  if grep -q '<uses-sdk' "$M"; then
+    grep -q 'minSdkVersion' "$M"    || sed -i -E "s#(<uses-sdk)#\1 android:minSdkVersion=\"$MINSDK\"#" "$M"
+    grep -q 'targetSdkVersion' "$M" || sed -i -E "s#(<uses-sdk)#\1 android:targetSdkVersion=\"$TARGETSDK\"#" "$M"
+  fi
+  # if there is no <uses-sdk> at all, aapt2 flags below will inject one
+}
+
+#---------------------------------------------------------------------
+# 7. Build
+#---------------------------------------------------------------------
+build_project() {
+  local dir="${1:-$PWD}"
+  locate_or_scaffold "$dir"
+
+  [ -f AndroidManifest.xml ] || die "AndroidManifest.xml nahi mila: $PWD"
+
+  log "Project: $PWD"
+
+  local PKG LABEL NAME
+  PKG=$(grep -oE 'package="[^"]+"' AndroidManifest.xml | head -1 | sed 's/package="//; s/"//')
+  LABEL=$(grep -oE 'android:label="[^"]+"' AndroidManifest.xml | head -1 | sed 's/android:label="//; s/"//')
+  [ -z "$PKG" ] && die "AndroidManifest.xml me package= nahi mila."
+  case "$LABEL" in ""|@string/*) LABEL="${PKG##*.}";; esac
+  NAME=$(printf '%s' "$LABEL" | tr -d ' /\\:*?"<>|')
+
+  printf '   %spackage%s   : %s\n   %sminSdk%s    : %s   %s(forced)%s\n   %stargetSdk%s : %s   %s(forced - install-friendly)%s\n   %sapp name%s  : %s\n' \
+         "$D" "$N" "$PKG" "$D" "$N" "$MINSDK" "$D" "$N" \
+         "$D" "$N" "$TARGETSDK" "$D" "$N" "$D" "$N" "$NAME"
+
+  local RESDIR="" ASSETDIR="" d
+  for d in res app/src/main/res; do [ -d "$d" ] && RESDIR="$d" && break; done
+  for d in assets app/src/main/assets; do [ -d "$d" ] && ASSETDIR="$d" && break; done
+
+  local SRCDIRS=()
+  for d in src java app/src/main/java gen; do [ -d "$d" ] && SRCDIRS+=("$d"); done
+  [ ${#SRCDIRS[@]} -gt 0 ] || die "Koi source folder (src/ ya java/) nahi mila."
+
+  local B="$PWD/.nullshell-build"
+  rm -rf "$B"
+  mkdir -p "$B/gen" "$B/classes" "$B/dex" "$B/out"
+
+  # fixed manifest copy
+  prepare_manifest "$B"
+
+  step 1 "Resources compile (aapt2)..."
+  local LINK_INPUT=""
+  if [ -n "$RESDIR" ]; then
+    aapt2 compile --dir "$RESDIR" -o "$B/res.zip" || die "aapt2 compile fail."
+    LINK_INPUT="$B/res.zip"; ok "Resources compiled."
+  else
+    warn "res/ folder nahi mila - bina resources ke build."
+  fi
+
+  step 2 "Manifest + resources link (aapt2)..."
+  local LINK_ARGS=(-I "$ANDROID_JAR" --manifest "$B/AndroidManifest.xml"
+                   --java "$B/gen" -o "$B/out/base.apk" --auto-add-overlay
+                   --min-sdk-version "$MINSDK" --target-sdk-version "$TARGETSDK")
+  [ -n "$ASSETDIR" ] && LINK_ARGS+=(-A "$ASSETDIR")
+  [ -n "$LINK_INPUT" ] && LINK_ARGS+=("$LINK_INPUT")
+  aapt2 link "${LINK_ARGS[@]}" || die "aapt2 link fail. Manifest/resources check karo."
+  ok "Resources linked, R.java generated."
+
+  step 3 "Java compile (javac)..."
+  find "${SRCDIRS[@]}" -name '*.java' ! -name 'R.java' > "$B/sources.txt" 2>/dev/null
+  find "$B/gen" -name '*.java' >> "$B/sources.txt" 2>/dev/null
+  [ -s "$B/sources.txt" ] || die "Koi .java file nahi mili. src/ folder me code hai?"
+  "$JAVA_HOME/bin/javac" --release 9 -encoding UTF-8 \
+      -d "$B/classes" -cp "$ANDROID_JAR" @"$B/sources.txt" \
+      || die "Java compile fail. Upar wala error dekho."
+  ok "Java compiled ($(wc -l < "$B/sources.txt") file)."
+
+  step 4 "DEX convert ($DEXER)..."
+  local CLS=()
+  mapfile -t CLS < <(find "$B/classes" -name '*.class')
+  [ ${#CLS[@]} -gt 0 ] || die "Koi .class nahi bana."
+  if [ "$DEXER" = "d8" ]; then
+    d8 --lib "$ANDROID_JAR" --min-api "$MINSDK" --output "$B/dex" "${CLS[@]}" \
+       || die "d8 fail. Library jar Java version check karo."
+  else
+    dx --dex --output="$B/dex/classes.dex" "${CLS[@]}" || die "dx fail."
+  fi
+  [ -f "$B/dex/classes.dex" ] || die "classes.dex nahi bana."
+  ok "classes.dex ready."
+
+  step 5 "Package + align..."
+  cp "$B/out/base.apk" "$B/out/unsigned.apk"
+  zip -ujq "$B/out/unsigned.apk" "$B/dex/classes.dex" \
+      || die "classes.dex APK me add nahi hua."
+  if command -v zipalign >/dev/null 2>&1; then
+    zipalign -f -p 4 "$B/out/unsigned.apk" "$B/out/aligned.apk" \
+      && ok "APK aligned." || { cp "$B/out/unsigned.apk" "$B/out/aligned.apk"; warn "zipalign skip."; }
+  else
+    cp "$B/out/unsigned.apk" "$B/out/aligned.apk"; warn "zipalign nahi mila - skip."
+  fi
+
+  step 6 "Sign (apksigner)..."
+  mkdir -p "NullShell"
+  local OUT="NullShell/${NAME}.apk"
+  apksigner sign --ks "$KS" --ks-pass "pass:$KSPASS" --ks-key-alias "$KSALIAS" \
+     --key-pass "pass:$KSPASS" --min-sdk-version "$MINSDK" \
+     --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+     --out "$OUT" "$B/out/aligned.apk" \
+     || die "apksigner fail."
+  ok "APK signed."
+
+  if [ -d "$HOME_T/storage/downloads" ]; then
+    cp "$OUT" "$HOME_T/storage/downloads/${NAME}.apk" 2>/dev/null && \
+      ok "Copy: /sdcard/Download/${NAME}.apk"
+  fi
+
+  # verify signature + show sdk
+  command -v apksigner >/dev/null 2>&1 && \
+    { apksigner verify "$OUT" >/dev/null 2>&1 && ok "Signature verify PASS" || warn "Verify fail."; }
+  if command -v aapt2 >/dev/null 2>&1; then
+    local SDKINFO
+    SDKINFO=$(aapt2 dump badging "$OUT" 2>/dev/null | grep -E "sdkVersion|targetSdkVersion" | head -2)
+    [ -n "$SDKINFO" ] && printf '   %s%s%s\n' "$D" "$SDKINFO" "$N"
+  fi
+
+  local SIZE; SIZE=$(du -h "$OUT" 2>/dev/null | cut -f1)
+  echo
+  printf '%s      ★  BUILD  SUCCESS  ★%s\n' "$GR" "$N"
+  printf '      %sAPK%s    : %s%s%s\n'  "$D" "$N" "$W" "$PWD/$OUT" "$N"
+  printf '      %sSize%s   : %s%s%s\n'  "$D" "$N" "$CY" "$SIZE" "$N"
+  printf '      %sminSDK%s : %s%s%s    %stargetSDK%s : %s%s%s\n' \
+         "$D" "$N" "$Y" "$MINSDK" "$N" "$D" "$N" "$Y" "$TARGETSDK" "$N"
+  printf '      %sInstall%s: %stermux-open %s%s\n' "$D" "$N" "$GR" "$OUT" "$N"
+  printf '      %sBuilt by %s%s  %s.%s  %sOwner %s%s\n' \
+         "$D" "$N" "$TOOL_NAME" "$D" "$N" "$D" "$OWNER_NAME" "$N"
+  printf '      %sTip: agar "App not installed" aaye to purana version pehle uninstall karo.%s\n' "$D" "$N"
+  echo
+}
+
+#---------------------------------------------------------------------
+# Install self as a GLOBAL command (works after closing Termux too)
+#---------------------------------------------------------------------
+install_self() {
+  mkdir -p "$PREFIX/bin" "$TOOLZ"
+  if [ -f "$SELF" ]; then
+    cp "$SELF" "$PREFIX/bin/nullshell" 2>/dev/null || cat "$SELF" > "$PREFIX/bin/nullshell"
+  else
+    die "Install fail: script file nahi mila ($SELF)."
+  fi
+  chmod +x "$PREFIX/bin/nullshell"
+  cp "$PREFIX/bin/nullshell" "$PREFIX/bin/NullShell" 2>/dev/null
+  chmod +x "$PREFIX/bin/NullShell"
+  if [ ! -s "$ANDROID_JAR" ]; then
+    if [ -n "$SELF_DIR" ] && [ -s "$SELF_DIR/toolz/android.jar" ]; then
+      cp "$SELF_DIR/toolz/android.jar" "$ANDROID_JAR"
+      ok "android.jar bhi install kar diya (offline ready)."
+    elif [ -s "./toolz/android.jar" ]; then
+      cp "./toolz/android.jar" "$ANDROID_JAR"
+      ok "android.jar bhi install kar diya (offline ready)."
+    fi
+  fi
+  ok "GLOBAL install ho gaya!"
+  printf '   Ab Termux band karne ke baad bhi, kisi bhi folder me sirf likho:\n'
+  printf '        %sNullShell%s     (ya  %snullshell%s)\n' "$GR" "$N" "$GR" "$N"
+  printf '   Wahi folder build hoga jisme aap khade ho.\n'
+}
+
+#---------------------------------------------------------------------
+# Help / owner
+#---------------------------------------------------------------------
+usage() {
+cat <<EOF
+
+${TOOL_NAME} v${TOOL_VER}  -  Termux Android APK Builder
+Owner: ${OWNER_NAME}  |  GitHub: ${OWNER_GH}  |  Telegram: ${OWNER_TG}
+
+Usage:
+  NullShell                 -> current folder ko build karo
+  NullShell /path/to/proj   -> us folder ko build karo (nested manifest bhi dhundta hai)
+  NullShell --setup         -> sirf tools install/setup karo
+  NullShell --install       -> GLOBAL command bana do (NullShell / nullshell)
+  NullShell --owner         -> owner details
+  NullShell --help          -> yeh help
+
+Apna saara code ek hi folder me rakho, us folder me jao, aur likho:  NullShell
+- Build ke waqt minSdk=${MINSDK}, targetSdk=${TARGETSDK} force hote hain
+  (purana manifest bhi chalega) -> Android 5 se 16+ tak install.
+- Manifest root me na ho to subfolders me dhundh leta hai.
+- android.jar zip me bundled hai - internet ke bina bhi chalta hai.
+Har build ke baad APK:  <project>/NullShell/<AppName>.apk
+EOF
+}
+
+show_owner() {
+  printf '\n'
+  printf '   %sTool%s    : %s v%s\n' "$D" "$N" "$TOOL_NAME" "$TOOL_VER"
+  printf '   %sOwner%s   : %s%s%s\n' "$D" "$N" "$Y" "$OWNER_NAME" "$N"
+  printf '   %sGitHub%s  : %s%s%s  (%s)\n' "$D" "$N" "$W" "$OWNER_GH" "$N" "$OWNER_GHU"
+  printf '   %sTelegram%s: %s%s%s  (%s)\n' "$D" "$N" "$BL" "$OWNER_TG" "$N" "$OWNER_TGU"
+  printf '   %sInsta%s   : %s%s%s  (%s)\n' "$D" "$N" "$MG" "$OWNER_IG" "$N" "$OWNER_IGU"
+  printf '\n'
+}
+
+#---------------------------------------------------------------------
+# Main
+#---------------------------------------------------------------------
+main() {
+  verify_owner
+  command -v clear >/dev/null 2>&1 && clear
+  banner
+  need_termux
+
+  case "${1:-}" in
+    --help|-h) usage; exit 0 ;;
+    --owner) show_owner; exit 0 ;;
+    --version|-v) echo "$TOOL_NAME v$TOOL_VER"; exit 0 ;;
+  esac
+
+  install_pkgs
+  setup_java
+  get_android_jar
+  get_keystore
+  pick_dexer
+
+  case "${1:-}" in
+    --setup) ok "Setup complete. Ab 'NullShell' chalao build ke liye."; exit 0 ;;
+    --install) install_self; exit 0 ;;
+    *) build_project "${1:-$PWD}" ;;
+  esac
+}
+
+main "$@"

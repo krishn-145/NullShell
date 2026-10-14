@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Shell Hello</string>
+    <string name="tagline">Termux se build hua - bina error, kisi bhi Android par install!</string>
+</resources>
