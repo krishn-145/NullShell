@@ -1,4 +1,5 @@
 # NullShell
+<img width="3520" height="920" alt="110540" src="https://github.com/user-attachments/assets/180b0dcd-ac26-48f7-bab5-c9eacd6c37a3" />
 
 **Build any Java Android app into a signed, installable APK — right inside Termux.**
 No Android Studio. No Gradle. No PC. Just one command.
