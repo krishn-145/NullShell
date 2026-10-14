@@ -11,7 +11,7 @@ No Android Studio. No Gradle. No PC. Just one command.
 ## Contributors
 
 - [@krishn-145](https://github.com/krishn-145)
-- [@kalidroid](https://github.com/kalidroid)
+- [@kalidroid](https://github.com/kalidrod)
 ---
 
 ## 👤 Owner
