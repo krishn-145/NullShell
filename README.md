@@ -8,7 +8,10 @@ No Android Studio. No Gradle. No PC. Just one command.
 ![Language](https://img.shields.io/badge/Java-Build-red?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 ![Version](https://img.shields.io/badge/Version-1.4-green?style=for-the-badge)
+## Contributors
 
+- [@krishn-145](https://github.com/krishn-145)
+- [@kalidroid](https://github.com/kalidroid)
 ---
 
 ## 👤 Owner
